@@ -65,7 +65,7 @@ The dimensions are:
 
 
 <B>Nomenclature </B> <BR>
- - Symbols with the a \f$ \bar{bar} \f$ indicate that the quantity has been normalized by a constant parameter.  For forces, this will all ways be \f$F_{m,opt}\f$.  For velocities and lengths this will be \f$l_{m,opt}\f$ (velocities will therefore have units of "optimal lengths per second")
+ - Symbols with the a \f$ \bar{bar} \f$ indicate that the quantity has been normalized by a constant parameter.  For forces, this will all ways be \f$F_{m,opt}\f$.  For velocities and lengths this will be \f$l_{m,opt}\f$ (velocities will therefore have units of "optimal lengths per second").  One exception to this is the normalized tendon velocity; it is normalized by the tendon slack length.
  - Muscle velocities sign convention is the positive is lengthening (eccentric)
 <table>
 <tr>
@@ -801,6 +801,21 @@ public:
                                 const;
 
 
+        /** Calculate the potential energy in the Muscle Parallel Elastic
+        Element.
+          @param projFibLengthNorm Length of the muscle fiber projected inline
+              with tendon and normalized by the optimal fiber length (m/m)
+          @returns parrallelElementPE The potential Energy (N-m)*/
+        double calcFiberPotentialEnergy(double projFibLengthNorm) const;
+
+
+
+        /** Calculate the potential energy in the tendon.
+          @param projFibLengthNorm Length of the muscle fiber projected inline
+              with tendon and normalized by the optimal fiber length (m/m)
+          @param muscleLength The length of the muscle and tendon
+          @returns tendonPE The potential Energy (N-m)*/
+        double calcTendonPotentialEnergy(double projFibLengthNorm, double muscleLength) const;
 
 //=============================================================================
 // PROTECTED METHODS
@@ -815,7 +830,14 @@ public:
 //==============================================================================
 
 
-    void calcMuscleLengthInfo(const SimTK::State& s, MuscleLengthInfo& mli) const;
+    void calcMuscleLengthInfo(const SimTK::State& s, MuscleLengthInfo& mli) const override;
+
+    void  calcMusclePotentialEnergyInfo(const SimTK::State& s,
+                                        MusclePotentialEnergyInfo& mpei) const override;
+
+    void calcFiberVelocityInfo(const SimTK::State& s,
+                             FiberVelocityInfo& fvi) const override;
+
     /* Not implmented (yet)
         void calcMuscleLengthInfo(const SimTK::State& s,
                                   MuscleLengthInfo& mli) const override;
@@ -871,6 +893,17 @@ public:
 
         // Rebuilds muscle model if any of its properties have changed.
         void extendFinalizeFromProperties() override;
+
+        // These methods mimic the MuscleFixedWidthPennationModel class used
+        // in the Millard Muscle, but are not a separate class.
+        // TODO: Can these be replaced with theMuscleFixedWidthPennationModel?
+        double penMdl_calcCosPennationAngle(double projFibLenNorm, double fiberLengthNorm) const;
+        double penMdl_calcTendonLength(double projFibLengthNorm,  double muscleLength) const;
+        double penMdl_calcPennationAngularVelocity( double cosPennationAngle, double sinPennationAngle,
+                double fiberLength, double projFiberVelocity) const;
+
+
+        SimTK::Vec8 calcForceVelocityFactor(double fiberLengtheningVelocityNorm, double cosPenn, double fiberLengthNorm, bool returnJacobians) const;
 
 //==============================================================================
 // PRIVATE UTILITY CLASS MEMBERS

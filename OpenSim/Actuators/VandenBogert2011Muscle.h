@@ -488,10 +488,10 @@ public:
         by fiber optimal length, L_{slack,fiber} (dimensionless)*/
         double getNormFiberSlackLength() const;
 
-        /** @param activTimeConstant The activation time constant, T_{act} (s)*/
-        void setActivTimeConstant(double activTimeConstant);
+        /** @param activationTimeConstant The activation time constant, T_{act} (s)*/
+        void setActivationTimeConstant(double activTimeConstant);
         /** @returns The activation time constant, T_{act} (s)*/
-        double getActivTimeConstant() const;
+        double getActivationTimeConstant() const;
 
         /** @param deactivationTimeConstant The deactivation time constant, T_{deact} (s)*/
         void setDeactivationTimeConstant(double deactivationTimeConstant);
@@ -829,7 +829,6 @@ public:
 // MUSCLE INTERFACE REQUIREMENTS
 //==============================================================================
 
-
     void calcMuscleLengthInfo(const SimTK::State& s, MuscleLengthInfo& mli) const override;
 
     void  calcMusclePotentialEnergyInfo(const SimTK::State& s,
@@ -838,23 +837,9 @@ public:
     void calcFiberVelocityInfo(const SimTK::State& s,
                              FiberVelocityInfo& fvi) const override;
 
-    /* Not implmented (yet)
-        void calcMuscleLengthInfo(const SimTK::State& s,
-                                  MuscleLengthInfo& mli) const override;
+    void calcMuscleDynamicsInfo(const SimTK::State& s,
+                                MuscleDynamicsInfo& mdi) const override;
 
-
-        void calcFiberVelocityInfo(const SimTK::State& s,
-                                   FiberVelocityInfo& fvi) const override;
-
-
-        void calcMuscleDynamicsInfo(const SimTK::State& s,
-                                    MuscleDynamicsInfo& mdi) const override;
-
-
-        void  calcMusclePotentialEnergyInfo(const SimTK::State& s,
-                                            MusclePotentialEnergyInfo& mpei)
-                                            const override;
-     */
 
 //==============================================================================
 // MODELCOMPONENT INTERFACE REQUIREMENTS
@@ -889,7 +874,7 @@ public:
     private:
         /** construct the new properties and set their default values */
         void constructProperties();
-
+        void setNull();
 
         // Rebuilds muscle model if any of its properties have changed.
         void extendFinalizeFromProperties() override;
@@ -897,13 +882,18 @@ public:
         // These methods mimic the MuscleFixedWidthPennationModel class used
         // in the Millard Muscle, but are not a separate class.
         // TODO: Can these be replaced with theMuscleFixedWidthPennationModel?
-        double penMdl_calcCosPennationAngle(double projFibLenNorm, double fiberLengthNorm) const;
+        SimTK::Vec3 penMdl_calcCosPennationAngle(double projFibLenNorm, double fiberLengthNorm, bool returnJacobians) const;
         double penMdl_calcTendonLength(double projFibLengthNorm,  double muscleLength) const;
         double penMdl_calcPennationAngularVelocity( double cosPennationAngle, double sinPennationAngle,
                 double fiberLength, double projFiberVelocity) const;
 
 
-        SimTK::Vec8 calcForceVelocityFactor(double fiberLengtheningVelocityNorm, double cosPenn, double fiberLengthNorm, bool returnJacobians) const;
+        SimTK::Vec8 calcFiberActiveForceVelocityMultiplier(double fiberLengtheningVelocityNorm, double cosPenn, double fiberLengthNorm, bool returnJacobians) const;
+        SimTK::Vec2 calcFiberActiveForceLengthMultiplier(double fiberLengthNorm, bool returnJacobians) const;
+        SimTK::Vec2 calcFiberPassiveForceLengthMultiplier(double fiberLengthNorm, bool returnJacobians) const;
+        SimTK::Vec4 calcTendonForceMultiplier(double muscleLength, double projFibLenNorm, bool returnJacobians) const;
+        SimTK::Vec2 calcFiberDampingMultiplier(double projFibVelNorm, bool returnJacobians) const;
+
 
 //==============================================================================
 // PRIVATE UTILITY CLASS MEMBERS

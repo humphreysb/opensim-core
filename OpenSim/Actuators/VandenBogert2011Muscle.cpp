@@ -35,7 +35,7 @@ VandenBogert2011Muscle::VandenBogert2011Muscle()
  * Constructor.
  */
 VandenBogert2011Muscle::VandenBogert2011Muscle
-        (const std::string& name,  double maxIsometricForce,
+        (const std::string &name,  double maxIsometricForce,
                  double optimalFiberLength,double tendonSlackLength,
                  double pennationAngle)
 { ;
@@ -58,8 +58,6 @@ VandenBogert2011Muscle::VandenBogert2011Muscle
  */
 void VandenBogert2011Muscle::constructProperties()
 {
-    setAuthors("A. van den Bogert, B. Humphreys, C. Dembia");
-    setReferences("van den Bogert A, Blana D, Heinrich D, Implicit methods for efficient musculoskeletal simulation and optimal control. Procedia IUTAM 2011; 2:297-316");
 
     constructProperty_tendon_strain_at_max_iso_force(0.033);
     constructProperty_active_force_length_curve_width(0.63);
@@ -80,7 +78,15 @@ void VandenBogert2011Muscle::constructProperties()
     //constructProperty_max_contraction_velocity(10*optimal_fiber_length);
 }
 
+//_____________________________________________________________________________
+// Set the data members of this muscle to their null values.
+void VandenBogert2011Muscle::setNull()
+{
+    // no data members
+    setAuthors("A. van den Bogert, B. Humphreys, C. Dembia");
+    setReferences("van den Bogert A, Blana D, Heinrich D, Implicit methods for efficient musculoskeletal simulation and optimal control. Procedia IUTAM 2011; 2:297-316");
 
+}
 
 
 void VandenBogert2011Muscle::extendFinalizeFromProperties()
@@ -123,9 +129,9 @@ void VandenBogert2011Muscle::setNormFiberSlackLength(double
 double VandenBogert2011Muscle::getNormFiberSlackLength() const {
      return get_fiber_slack_length_norm(); }
 
-void VandenBogert2011Muscle::setActivTimeConstant(double activTimeConstant) {
+void VandenBogert2011Muscle::setActivationTimeConstant(double activTimeConstant) {
      set_activation_time_constant(activTimeConstant); }
-double VandenBogert2011Muscle::getActivTimeConstant() const {
+double VandenBogert2011Muscle::getActivationTimeConstant() const {
      return get_activation_time_constant(); }
 
 void VandenBogert2011Muscle::setDeactivationTimeConstant(double
@@ -174,8 +180,8 @@ const
 {
     setStateVariableValue(s, "activation", activation);
 
-    //markCacheVariableInvalid(s,"velInfo");
-    //markCacheVariableInvalid(s,"dynamicsInfo");
+    markCacheVariableInvalid(s,"velInfo");
+    markCacheVariableInvalid(s,"dynamicsInfo");
 }
 
 // Get the Residual of muscle
@@ -220,8 +226,11 @@ double  VandenBogert2011Muscle::getActivation(const SimTK::State& s) const
 
 double  VandenBogert2011Muscle::computeActuation(const SimTK::State& s) const
 {
+
     const MuscleDynamicsInfo& mdi = getMuscleDynamicsInfo(s);
+
     setActuation(s, mdi.tendonForce);
+
     return mdi.tendonForce;
 }
 
@@ -261,7 +270,7 @@ computeFiberEquilibriumAtZeroVelocity(SimTK::State& s) const
 void VandenBogert2011Muscle::
 postScale(const SimTK::State& s, const ScaleSet& aScaleSet)
 {
-    //TODO:  I have not really thought through if there are special cases for this muscle
+
     GeometryPath& path = upd_GeometryPath();
     path.postScale(s, aScaleSet);
 
@@ -304,8 +313,8 @@ const
 {
     Super::extendInitStateFromProperties(s);
 
+    //Brad - Thelen does not do this here, but Millard does
     setActivation(s, getDefaultActivation());
-
     double projFiberLength = fiberLengthToProjectedLength(getDefaultFiberLength(), false);
     setProjFiberLengthNorm(s, projFiberLength/getOptimalFiberLength());
 }
@@ -314,6 +323,7 @@ void VandenBogert2011Muscle::extendSetPropertiesFromState(const SimTK::State& s)
 {
     Super::extendSetPropertiesFromState(s);
 
+    //Brad - Thelen does not do this here, but Millard does
     setDefaultActivation(getStateVariableValue(s,"activation"));
     setDefaultFiberLength(getStateVariableValue(s,"projected_fiber_length_normalized"));
 
@@ -323,20 +333,28 @@ void VandenBogert2011Muscle::extendSetPropertiesFromState(const SimTK::State& s)
 void VandenBogert2011Muscle::computeStateVariableDerivatives(const SimTK::State& s) const
 {
 
+
     double excitation = getControl(s);
+
     // For now we will start with static guess
     // TODO: figure out how to use previous state as guess
     SimTK::Vector ydotInitialGuess(2);
     ydotInitialGuess[0] = 0.0;
     ydotInitialGuess[1] = 0.0;
-    double projFibVelNorm = calcSolveMuscle(s, excitation, ydotInitialGuess);
+    // Brad double projFibVelNorm = calcSolveMuscle(s, excitation, ydotInitialGuess);
+    double projFibVelNorm = 0.05;
+
+
     setStateVariableDerivativeValue(s, "projected_fiber_length_normalized", projFibVelNorm );
 
 
     double adot =getActivationDerivative(s);
+
     setStateVariableDerivativeValue(s, "activation",  adot);
 
-
+    cout << "excitation: " << excitation << endl;
+    cout << "projFibVelNorm: " << projFibVelNorm << endl;
+    cout << "adot: " << adot<< endl;
 
 }
 
@@ -655,7 +673,7 @@ calcImplicitResidual(double muscleLength, double projFibLenNorm, double activ,
     double tendonSlackLength = getTendonSlackLength();
 
     //T_{act} (s) Activation time
-    double activTimeConstant = getActivTimeConstant();
+    double activTimeConstant = getActivationTimeConstant();
 
     //T_{deact} (s) Deactivation time
     double deactivationTimeConstant = getDeactivationTimeConstant();
@@ -673,26 +691,18 @@ calcImplicitResidual(double muscleLength, double projFibLenNorm, double activ,
 
 
     //-------Convert projFiberLength & Velocity to fiberLength & Velocity------/
-    double dcosPenn_dprojFibLen;
     double fiberLengthNorm;
-    double dfiberLength_dprojFibLen;
+    double dfiberLength_dprojFibLen = SimTK::NaN;
+    double dcosPenn_dprojFibLen = SimTK::NaN;
 
     fiberLengthNorm=projFibLenToFiberLength(projFibLenNorm,true);
 
-    double cosPenn=penMdl_calcCosPennationAngle(projFibLenNorm,fiberLengthNorm);
-
+    SimTK::Vec3 cosPennAndDeriv=penMdl_calcCosPennationAngle(projFibLenNorm,fiberLengthNorm,returnJacobians);
+    double cosPenn = cosPennAndDeriv[0];
 
     if (returnJacobians) {
-        if (pennAtOptFiberLength < 0.01) {
-            // If pennation is zero, we can't do this because volume is zero,
-            //      and fiberLength ~ projFiberLength
-            dfiberLength_dprojFibLen = 1;
-            dcosPenn_dprojFibLen = 0;
-        } else {
-            double b = sin(pennAtOptFiberLength);
-            dfiberLength_dprojFibLen = cosPenn;
-            dcosPenn_dprojFibLen = pow(b, 2) / pow(fiberLengthNorm, 3);
-        }
+        dfiberLength_dprojFibLen = cosPennAndDeriv[1];
+        dcosPenn_dprojFibLen = cosPennAndDeriv[2];
     }
 
 
@@ -703,119 +713,58 @@ calcImplicitResidual(double muscleLength, double projFibLenNorm, double activ,
     //      l_m=(l_p^2+h^2)^0.5
     // you get l_mdot=l_pdot * l_p/l_m = l_pdot * cos(penn)
 
-    //double dfiberLengtheningVelocityNorm_dprojFibVelNorm = cosPenn;
-    //double dfiberLengtheningVelocityNorm_dprojFibLenNorm =
-     //       projFibVelNorm * dcosPenn_dprojFibLen;
 
-
-    //---F1 is the normalized isometric force-length relationship at maximum
+    //--- F1 is the normalized isometric force-length relationship at maximum
     //                                               activation--------------//
-    double fiberExp = (fiberLengthNorm - 1.0) / fl_width;   // [dimensionless]
-    double F1 = exp(-pow(fiberExp, 2));        // Gaussian force-length curve
-
-    double dF1_dfiberLengthNorm = 0;
-
-
-
-    if (returnJacobians) {
-        dF1_dfiberLengthNorm = -2.0 * fiberExp * F1 / fl_width;
-        double dF1_dprojFibLenNorm =
-                dF1_dfiberLengthNorm * dfiberLength_dprojFibLen;
-    }
+    SimTK::Vec2 fiberForceLengthMultiplierAndDeriv = calcFiberActiveForceLengthMultiplier(fiberLengthNorm, returnJacobians);
+    double F1 = fiberForceLengthMultiplierAndDeriv[0];
+    double dF1_dfiberLengthNorm = fiberForceLengthMultiplierAndDeriv[0];
 
 
     //-------- F2 is the dimensionless force-velocity relationship -------//
-    SimTK::Vec8 fv = calcForceVelocityFactor(fiberLengtheningVelocityNorm, cosPenn, fiberLengthNorm, returnJacobians);
+    SimTK::Vec8 fv = calcFiberActiveForceVelocityMultiplier(fiberLengtheningVelocityNorm, cosPenn, fiberLengthNorm, returnJacobians);
 
     double F2 = fv[0];
+    double dF2_dactiv =SimTK::NaN;
+    double dF2_dprojFibLenNorm = SimTK::NaN;
+    double dF2_dprojFibVelNorm = SimTK::NaN;
     if (returnJacobians) {
         double dF2_dfiberLengtheningVelocityNorm = fv[1];
-        double dF2_dactiv = fv[2];
-        double dF2_dprojFibVelNorm = fv[3];
-        double dF2_dprojFibLenNorm = fv[4];
+        dF2_dactiv = fv[2];
+        dF2_dprojFibVelNorm = fv[3];
+        dF2_dprojFibLenNorm = fv[4];
         double dfiberLengtheningVelocityNorm_dprojFibVelNorm = fv[6];
         double dfiberLengtheningVelocityNorm_dprojFibLenNorm = fv[7];
     }
 
-
-
-
     //------F3 is the dimensionless fiber (PEE) force (in units of Fmax)------//
-    double dF3_dprojFibLenNorm;
-
-    // stiffness of the linear term is 1 N/m, convert to Fmax/Lceopt units
-    double kPEENorm = 1.0 / maxIsoForce * optFiberLength;
-    // elongation of fiber (PEE), relative to Lceopt
-    double elongationFiberNorm = (fiberLengthNorm - fiberSlackLengthNorm);
-    double F3 = kPEENorm * elongationFiberNorm;
-    // low stiffness linear term
-    double dF3_dfiberLengthNorm = kPEENorm;
-    double kPEE2Norm =0;
-    if (elongationFiberNorm > 0) {
-        kPEE2Norm = 1 / pow(fl_width, 2);  //Fiber (PEE) quadratic stiffness,
-        //          so Fpee = Fmax when Lce = Lce*(1+W)
-        //add quadratic term for positive elongation
-        F3 = F3 + kPEE2Norm * pow(elongationFiberNorm, 2);
-        if (returnJacobians) {
-            dF3_dfiberLengthNorm =
-                    dF3_dfiberLengthNorm + 2 * kPEE2Norm * elongationFiberNorm;
-        }
-    }
+    SimTK::Vec2 fiberPassiveForceLengthMultiplierAndDeriv = calcFiberPassiveForceLengthMultiplier(fiberLengthNorm, returnJacobians);
+    double F3 = fiberPassiveForceLengthMultiplierAndDeriv[0];
+    double dF3_dfiberLengthNorm = SimTK::NaN;
     if (returnJacobians) {
-        dF3_dprojFibLenNorm = dF3_dfiberLengthNorm * dfiberLength_dprojFibLen;
+        dF3_dfiberLengthNorm = fiberPassiveForceLengthMultiplierAndDeriv[1];
     }
-
 
     //--------F4 is the dimensionless SEE force (in units of Fmax)----------//
-
-
-    // stiffness of the linear term is 1 N/m, convert to Fmax/m (so normalized
-    // by Fmax)
-    double kSEE = 1.0 / maxIsoForce;
-
-    // elongation of tendon (SEE), in meters
-    double elongationTendon =
-            penMdl_calcTendonLength(projFibLenNorm,muscleLength)
-            - tendonSlackLength;
-    //  low stiffness linear term
-    double F4 = kSEE * elongationTendon;
-    double dF4_dmuscleLength;
-    double dF4_dprojFibLenNorm;
+    SimTK::Vec4 tendonForceMultiplierAndDeriv = calcTendonForceMultiplier(muscleLength, projFibLenNorm, returnJacobians);
+    double F4 = tendonForceMultiplierAndDeriv[0];
+    double dF4_dprojFibLenNorm = SimTK::NaN;
+    double dF4_dmuscleLength = SimTK::NaN;
     if (returnJacobians) {
-         dF4_dprojFibLenNorm = -kSEE * optFiberLength;
-         dF4_dmuscleLength = kSEE;
+        dF4_dprojFibLenNorm = tendonForceMultiplierAndDeriv[1];
+        dF4_dmuscleLength = tendonForceMultiplierAndDeriv[2];
     }
-
-    double kSEE2 = SimTK::NaN;
-    if (elongationTendon > 0) {
-        // Tendon (SEE) quadratic stiffness, so Fsee = Fmax at strain of umax
-        // This is normalized by Fmax
-        kSEE2 = 1 / pow(tendonSlackLength * fMaxTendonStrain, 2);
-
-        // add quadratic term for positive deformation
-        F4 = F4 + (kSEE2 * pow(elongationTendon, 2));
-        if (returnJacobians) {
-             dF4_dprojFibLenNorm = dF4_dprojFibLenNorm - 2 * kSEE2 *
-                                             optFiberLength* elongationTendon;
-             dF4_dmuscleLength = dF4_dmuscleLength + 2 * kSEE2 *
-                                                             elongationTendon;
-        }
-    }
-
 
     //-- F5 is viscous damping parallel to the CE (0.001 of Fmax at 1 Lceopt/s)
     // to  ensure that df/dLcedot is never zero-----------//
     double F5 = dampingCoeff * projFibVelNorm ;
     double dF5_dprojFibVelNorm  = dampingCoeff;
 
-
     // ---------Calculate the Muscle Force Residual ---------------------- //
     //The muscle dynamics equation: f = Fsee - (a*Fce - Fpee)*cos(Penn) -
     //                                                          Fdamping = 0
     //   (Reminder the units of fRes are (N/N), needs to be *Fmax to get to N)
     double fRes = F4 - (activ * F1 * F2 + F3)*cosPenn - F5;
-
-
 
 if (getDebugLevel()>0){
     cout << "-------------------------" << endl;
@@ -830,17 +779,17 @@ if (getDebugLevel()>0){
     cout << "cosPenn: " << cosPenn << endl;
     cout << "muscleLength: " << muscleLength << endl;
     cout << " SEE" << endl;
-    cout << "   kSEE: " << kSEE << endl;
-    cout << "   kSEE2: " << kSEE2 << endl;
-    cout << "   elongationTendon: " << elongationTendon << endl;
+    //cout << "   kSEE: " << kSEE << endl;
+    //cout << "   kSEE2: " << kSEE2 << endl;
+    //cout << "   elongationTendon: " << elongationTendon << endl;
     cout << "   tendonSlackLength: " << tendonSlackLength << endl;
     cout << " PEE" << endl;
     cout << "   fiberLengthNorm: " << fiberLengthNorm << endl;
     cout << "   optFiberLength: " << optFiberLength << endl;
     cout << "   projFibLenNorm: " << projFibLenNorm << endl;
-    cout << "   kPEENorm: " << kPEENorm << endl;
-    cout << "   kPEE2Norm: " << kPEE2Norm << endl;
-    cout << "   elongationFiberNorm: " <<  elongationFiberNorm << endl;
+    //cout << "   kPEENorm: " << kPEENorm << endl;
+    //cout << "   kPEE2Norm: " << kPEE2Norm << endl;
+    //cout << "   elongationFiberNorm: " <<  elongationFiberNorm << endl;
     cout << "" << endl;
 }
 
@@ -854,7 +803,6 @@ if (getDebugLevel()>0){
     dFsee_dy   = [0;0;(-d/L)*dFsee_dLm; 0;dFsee_dLce;0;0];
      % Fsee is a function of y(3) & y(5)
     end*/
-
 
     //----------------------Activation dynamics equation-------------------//
 
@@ -872,19 +820,20 @@ if (getDebugLevel()>0){
                        - (excitation - activ) * (1 / activTimeConstant - 1 / deactivationTimeConstant );
     }
 
-
-
     //---------------------Assemble Jacobians---------------------------//
     if (returnJacobians) {
         double dfRes_dactiv = -(F1*F2 + activ*F1*dF2_dactiv )*cosPenn;
+
+
+        double dF3_dprojFibLenNorm = dF3_dfiberLengthNorm  * dfiberLength_dprojFibLen;
+
         double dfRes_dprojFibLengthNorm = dF4_dprojFibLenNorm -
-                      (activ*(dF1_dfiberLengthNorm*F2 + F1*dF2_dprojFibLenNorm) +
-                       dF3_dprojFibLenNorm) * cosPenn - (activ*F1*F2 + F3) *
-                        dcosPenn_dprojFibLen;
+              (activ*(dF1_dfiberLengthNorm*F2 + F1*dF2_dprojFibLenNorm) +
+               dF3_dprojFibLenNorm) * cosPenn - (activ*F1*F2 + F3) *
+                dcosPenn_dprojFibLen;
+
         double dfRes_dprojFibVelNorm =
                 - activ*F1*dF2_dprojFibVelNorm - dF5_dprojFibVelNorm;
-        double dfRes_dmuscleLength = dF4_dmuscleLength;
-
 
         //y=(projFiberLength,activation)  <-States
 
@@ -908,7 +857,6 @@ if (getDebugLevel()>0){
         df_dydot[1][0] = 0;
         df_dydot[1][1] = dActRes_dactivdot;
 
-        df_dmuscleLength = dfRes_dmuscleLength;
     }
 
 
@@ -921,7 +869,7 @@ if (getDebugLevel()>0){
     results.df_dy = df_dy;
     results.df_dydot = df_dydot;
     results.df_du = df_du;
-    results.df_dmuscleLength = df_dmuscleLength;
+    results.df_dmuscleLength = dF4_dmuscleLength;
     results.F1 = F1;    //Output force components for troubleshooting
     results.F2 = F2;
     results.F3 = F3;
@@ -937,7 +885,7 @@ calcActivationDerivative(double activation, double excitation) const
 {
 
     double activationDerivative=(excitation - activation) *
-    (excitation / getActivTimeConstant() + (1 - excitation) / getDeactivationTimeConstant());
+    (excitation / getActivationTimeConstant() + (1 - excitation) / getDeactivationTimeConstant());
 
     return activationDerivative;
 }
@@ -971,25 +919,40 @@ void VandenBogert2011Muscle::calcMuscleLengthInfo(const SimTK::State& s,
 
         double projFibLengthNorm = getStateVariableValue(s, "projected_fiber_length_normalized");
 
+
         mli.normFiberLength = projFibLenToFiberLength(projFibLengthNorm,true);
         mli.fiberLength = mli.normFiberLength * optFiberLength ;
+        cout << "projFibLengthNorm : " << projFibLengthNorm  << endl;
+        cout << "mli.fiberLength : " << mli.fiberLength  << endl;
+        cout << "mli.normFiberLength: " << mli.normFiberLength << endl;
+        cout << "optFiberLength: " << optFiberLength << endl;
 
-        mli.cosPennationAngle = penMdl_calcCosPennationAngle(projFibLengthNorm, mli.normFiberLength)
-        mli.pennationAngle= acos(mli.cosPennationAngle);
+
+        SimTK::Vec3 cosPennAndDeriv = penMdl_calcCosPennationAngle(projFibLengthNorm, mli.normFiberLength, true);
+
+        mli.cosPennationAngle = cosPennAndDeriv[0];
+        mli.pennationAngle = acos(mli.cosPennationAngle);
+
+        //TODO: Do we want to report the derivatives?
+        mli.userDefinedLengthExtras.resize(2);
+        mli.userDefinedLengthExtras[0] = cosPennAndDeriv[1]; //dfiberLength_dprojFibLen
+        mli.userDefinedLengthExtras[1] = cosPennAndDeriv[2]; //dcosPenn_dprojFibLen
 
         mli.sinPennationAngle = sin(mli.pennationAngle);
         mli.fiberLengthAlongTendon = mli.fiberLength * mli.cosPennationAngle;
 
-        // Necessary even for the rigid tendon, as it might have gone slack.
-        mli.tendonLength      =penMdl_calcTendonLength(projFibLengthNorm, getLength(s));
+        mli.tendonLength      = penMdl_calcTendonLength(projFibLengthNorm, getLength(s));
 
         mli.normTendonLength  = mli.tendonLength / tendonSlackLen;
         mli.tendonStrain      = mli.normTendonLength - 1.0;
 
-        //mli.fiberPassiveForceLengthMultiplier =
-        //        fpeCurve.calcValue(mli.normFiberLength);
-        //mli.fiberActiveForceLengthMultiplier =
-        //        falCurve.calcValue(mli.normFiberLength);
+        //TODO: Do we want to report the derivatives?
+        SimTK::Vec2 fiberPassiveForceLengthMultiplierAndDeriv = calcFiberPassiveForceLengthMultiplier(mli.normFiberLength, false);
+        mli.fiberPassiveForceLengthMultiplier = fiberPassiveForceLengthMultiplierAndDeriv[0];
+
+        SimTK::Vec2 fiberActiveForceLengthMultiplierAndDeriv = calcFiberActiveForceLengthMultiplier(mli.normFiberLength, false);
+        mli.fiberActiveForceLengthMultiplier = fiberActiveForceLengthMultiplierAndDeriv[0];
+
 
     } catch(const std::exception &x) {
         std::string msg = "Exception caught in VandenBogert2011Muscle::"
@@ -1041,6 +1004,8 @@ void VandenBogert2011Muscle::calcFiberVelocityInfo(const SimTK::State& s, FiberV
 
 {
     try {
+
+
         // Get the quantities that we've already computed.
         const MuscleLengthInfo &mli = getMuscleLengthInfo(s);
 
@@ -1048,9 +1013,11 @@ void VandenBogert2011Muscle::calcFiberVelocityInfo(const SimTK::State& s, FiberV
         //double dlenMcl   = getLengtheningSpeed(s);
         //double optFibLen = getOptimalFiberLength();
 
+
         double projFiberVelocityNorm = getProjFiberVelNorm(s);
 
         double optimalFiberLength = getOptimalFiberLength();
+
         double cosPenn = mli.cosPennationAngle;
 
 
@@ -1070,7 +1037,7 @@ void VandenBogert2011Muscle::calcFiberVelocityInfo(const SimTK::State& s, FiberV
         fvi.normTendonVelocity = fvi.tendonVelocity / getTendonSlackLength();
 
 
-        SimTK::Vec8 fv = calcForceVelocityFactor(fvi.normFiberVelocity,
+        SimTK::Vec8 fv = calcFiberActiveForceVelocityMultiplier(fvi.normFiberVelocity,
                                                  mli.cosPennationAngle,
                                                  mli.normFiberLength, false);
 
@@ -1084,6 +1051,139 @@ void VandenBogert2011Muscle::calcFiberVelocityInfo(const SimTK::State& s, FiberV
     }
 }
 
+//==============================================================================
+// MUSCLE INTERFACE REQUIREMENTS -- MUSCLE DYNAMICS INFO
+//==============================================================================
+void VandenBogert2011Muscle::
+calcMuscleDynamicsInfo(const SimTK::State& s, MuscleDynamicsInfo& mdi) const {
+
+    try {
+        // Get the quantities that we've already computed.
+        const MuscleLengthInfo &mli = getMuscleLengthInfo(s);
+        const FiberVelocityInfo &mvi = getFiberVelocityInfo(s);
+
+        // Get the properties of this muscle.
+        double tendonSlackLen = getTendonSlackLength();
+        double optFiberLen = getOptimalFiberLength();
+        double maxIsometricForce = getMaxIsometricForce();
+
+        // Compute the stiffness of the muscle fiber.
+        SimTK_ERRCHK_ALWAYS(mli.fiberLength > SimTK::SignificantReal,
+                            "calcMuscleDynamicsInfo",
+                            "The muscle fiber has a length of 0, causing a singularity");
+
+
+        double activation = getControl(s);
+
+
+        SimTK::Vec8 fiberActiveForceVelocityMultiplier =
+                calcFiberActiveForceVelocityMultiplier(mvi.normFiberVelocity,
+                                                       mli.cosPennationAngle,
+                                                       mli.normFiberLength,
+                                                       false);
+
+        SimTK::Vec2 fiberForceLengthMultiplier =
+                calcFiberActiveForceLengthMultiplier(mli.normFiberLength,
+                                                     true);
+
+        SimTK::Vec2 fiberPassiveForceLengthMultiplier =
+                calcFiberPassiveForceLengthMultiplier(mli.normFiberLength,
+                                                      false);
+
+        SimTK::Vec2 fiberDampingMultiplier =
+                calcFiberDampingMultiplier(
+                        mvi.fiberVelocityAlongTendon/optFiberLen, false);
+
+        SimTK::Vec4 tendonForceMultiplier = calcTendonForceMultiplier(
+                getLength(s), mli.fiberLengthAlongTendon/optFiberLen,
+                true);
+
+
+        double fibActFvMult = fiberActiveForceVelocityMultiplier[0];
+        double fibActFlMult = fiberForceLengthMultiplier[0];
+        double fibPassFLMult = fiberPassiveForceLengthMultiplier[0];
+        double fibDampMult = fiberDampingMultiplier[0];
+        double tendFMult = tendonForceMultiplier[0];
+
+
+        double activeFiberForceNorm =
+                activation * fibActFvMult * fibActFlMult;
+        double fiberForceAlongTendonNorm =
+                (activeFiberForceNorm + fibPassFLMult) *
+                mli.cosPennationAngle - fibDampMult;
+
+        mdi.activation = activation;
+        mdi.fiberForceAlongTendon =
+                fiberForceAlongTendonNorm * maxIsometricForce;
+
+        //TODO: This will cause a singularity at cosPenn=90, but this is only in the mdi reporting
+        //Need to think of how to handle fiberForce
+        mdi.normFiberForce =
+                fiberForceAlongTendonNorm / mli.cosPennationAngle;
+        mdi.fiberForce = mdi.normFiberForce * maxIsometricForce;
+
+        mdi.activeFiberForce = activeFiberForceNorm * maxIsometricForce;
+        mdi.passiveFiberForce = fibPassFLMult * maxIsometricForce;
+        mdi.tendonForce = tendFMult * maxIsometricForce;
+        mdi.normTendonForce = tendFMult;
+
+
+        double dfibActFlMult_dfiberLengthNorm = fiberForceLengthMultiplier[1];
+        //double dfibPassFLMult_dfiberLengthNorm = fiberPassiveForceLengthMultiplier[1];
+
+        mdi.fiberStiffness =
+                (activation * dfibActFlMult_dfiberLengthNorm *
+                 fibActFvMult + dfibActFlMult_dfiberLengthNorm) *
+                (maxIsometricForce / optFiberLen);
+
+        // $\frac{dF_{mAT}}{dl_{ceAT}} =F_{m} \frac{sin^2(penn)}{l_{ce}} +  \frac{dF_{m}}{dl_{ce}}  {cos^2(penn)}$
+        mdi.fiberStiffnessAlongTendon =
+                mdi.activeFiberForce * pow(mli.sinPennationAngle, 2) /
+                mli.fiberLength +
+                mdi.fiberStiffnessAlongTendon *
+                pow(mli.cosPennationAngle, 2);
+
+        mdi.tendonStiffness = tendonForceMultiplier[4] * getMaxIsometricForce();
+
+        //TODO:  this seems odd.  From Millard2012EquilbriumMuscle:
+        // Ke, muscleStffness = (dFmAT_dlceAT*dFt_dtl)/(dFmAT_dlceAT+dFt_dtl);
+        // Why is the AT used for the fiber.  Since muscle length is along the
+        // fiber, should it be along the fiber?  Copying what Millard:
+        // mdi.muscleStiffness = (mdi.fiberStiffnessAlongTendon*mdi.tendonStiffness) / (mdi.fiberStiffnessAlongTendon + mdi.tendonStiffness);
+        // but I think this should be:
+        mdi.muscleStiffness = (mdi.fiberStiffness*mdi.tendonStiffness) / (mdi.fiberStiffness + mdi.tendonStiffness);
+
+        // TODO:  Verify power entires and clean up
+        //Adding these so I can copy in place the code from Millard Power Entries.  I have not verified the Millard power equations.
+        double fiso = getMaxIsometricForce();
+        double p1Fm = fiso * fibActFlMult;
+        double p2Fm = fiso * fibDampMult;
+        double fse = mdi.normTendonForce;
+
+        double dFibPEdt     = p1Fm*mvi.fiberVelocity; //only conservative part
+        //of passive fiber force
+        double dTdnPEdt     = fse*fiso*mvi.tendonVelocity;
+        double dFibWdt      = -(mdi.activeFiberForce+p2Fm)*mvi.fiberVelocity;
+        double dmcldt       = getLengtheningSpeed(s);
+        double dBoundaryWdt = mdi.tendonForce*dmcldt;
+
+        // Populate the power entries.
+        mdi.fiberActivePower  = dFibWdt;
+        mdi.fiberPassivePower = -(dFibPEdt);
+        mdi.tendonPower       = -dTdnPEdt;
+        mdi.musclePower       = -dBoundaryWdt;
+
+
+    } catch(const std::exception &x) {
+    std::string msg = "Exception caught in VandenBogert2011Muscle::"
+                              "calcMuscleDynamicsInfo from " + getName() + "\n"
+                      + x.what();
+    cerr << msg << endl;
+    throw OpenSim::Exception(msg);
+    }
+
+}
+
 
 
 double VandenBogert2011Muscle::getProjFiberVelNorm(const SimTK::State& s) const
@@ -1095,7 +1195,7 @@ double VandenBogert2011Muscle::getProjFiberVelNorm(const SimTK::State& s) const
     // balanced.
 
     double excitation = getExcitation(s);
-    SimTK::Vector projFibVelNormGuess;
+    SimTK::Vector projFibVelNormGuess(1);
 
     projFibVelNormGuess[0]=0;
     double projFiberVelocityNorm = calcSolveMuscle(s, excitation, projFibVelNormGuess);
@@ -1359,14 +1459,35 @@ double VandenBogert2011Muscle::calcSolveMuscle(const SimTK::State& s,
 };
 
 
-double VandenBogert2011Muscle::penMdl_calcCosPennationAngle(double projFibLenNorm, double fiberLengthNorm) const {
+SimTK::Vec3 VandenBogert2011Muscle::penMdl_calcCosPennationAngle(double projFibLenNorm, double fiberLengthNorm, bool returnJacobians) const {
 
     double pennAtOptFiberLength = getPennAtOptFiberLength();
+    double dfiberLength_dprojFibLen = SimTK::NaN;
+    double dcosPenn_dprojFibLen = SimTK::NaN;
 
     double cosPenn= 1.0;
     if (pennAtOptFiberLength>0.01) cosPenn = projFibLenNorm/fiberLengthNorm;
 
-    return cosPenn;
+    if (returnJacobians) {
+        if (pennAtOptFiberLength < 0.01) {
+            // If pennation is zero, we can't do this because volume is zero,
+            //      and fiberLength ~ projFiberLength
+            dfiberLength_dprojFibLen = 1;
+            dcosPenn_dprojFibLen = 0;
+        } else {
+            double b = sin(pennAtOptFiberLength);
+            dfiberLength_dprojFibLen = cosPenn;
+            dcosPenn_dprojFibLen = pow(b, 2) / pow(fiberLengthNorm, 3);
+        }
+    }
+
+    SimTK::Vec3 cosPennAndDeriv;
+
+    cosPennAndDeriv[0] = cosPenn;
+    cosPennAndDeriv[1] = dfiberLength_dprojFibLen;
+    cosPennAndDeriv[2] = dcosPenn_dprojFibLen;
+
+    return cosPennAndDeriv;
 };
 
 
@@ -1450,9 +1571,9 @@ double VandenBogert2011Muscle::calcTendonPotentialEnergy(double projFibLengthNor
 }
 
 
-SimTK::Vec8 VandenBogert2011Muscle::calcForceVelocityFactor(double fiberLengtheningVelocityNorm, double cosPenn, double fiberLengthNorm, bool returnJacobians) const {
+SimTK::Vec8 VandenBogert2011Muscle::calcFiberActiveForceVelocityMultiplier(double fiberLengtheningVelocityNorm, double cosPenn, double fiberLengthNorm, bool returnJacobians) const {
 
-    double F2 = SimTK::NaN;
+    double F2;
     double dF2_dfiberLengtheningVelocityNorm = SimTK::NaN;
     double dF2_dactiv = SimTK::NaN;
     double dF2_dprojFibVelNorm = SimTK::NaN;
@@ -1524,16 +1645,142 @@ SimTK::Vec8 VandenBogert2011Muscle::calcForceVelocityFactor(double fiberLengthen
                 dfiberLengtheningVelocityNorm_dprojFibLenNorm;
     }
 
-    SimTK::Vec8 fv;
+    SimTK::Vec8 fiberActiveForceVelocityMultiplierAndDeriv;
 
-    fv[0] = F2;
-    fv[1] = dF2_dfiberLengtheningVelocityNorm;
-    fv[2] = dF2_dactiv;
-    fv[3] = dF2_dprojFibVelNorm;
-    fv[4] = dF2_dprojFibLenNorm;
-    fv[5] = dcosPenn_dprojFibLen;
-    fv[6] = dfiberLengtheningVelocityNorm_dprojFibVelNorm;
-    fv[7] = dfiberLengtheningVelocityNorm_dprojFibLenNorm;
+    fiberActiveForceVelocityMultiplierAndDeriv[0] = F2;
+    fiberActiveForceVelocityMultiplierAndDeriv[1] = dF2_dfiberLengtheningVelocityNorm;
+    fiberActiveForceVelocityMultiplierAndDeriv[2] = dF2_dactiv;
+    fiberActiveForceVelocityMultiplierAndDeriv[3] = dF2_dprojFibVelNorm;
+    fiberActiveForceVelocityMultiplierAndDeriv[4] = dF2_dprojFibLenNorm;
+    fiberActiveForceVelocityMultiplierAndDeriv[5] = dcosPenn_dprojFibLen;
+    fiberActiveForceVelocityMultiplierAndDeriv[6] = dfiberLengtheningVelocityNorm_dprojFibVelNorm;
+    fiberActiveForceVelocityMultiplierAndDeriv[7] = dfiberLengtheningVelocityNorm_dprojFibLenNorm;
 
-    return fv;
+    return fiberActiveForceVelocityMultiplierAndDeriv;
+}
+
+
+
+SimTK::Vec2 VandenBogert2011Muscle::calcFiberActiveForceLengthMultiplier(double fiberLengthNorm, bool returnJacobians) const {
+
+    double fl_width = getFlWidth();
+
+    //---F1 is the normalized isometric force-length relationship at maximum
+    //                                               activation--------------//
+    double fiberExp = (fiberLengthNorm - 1.0) / fl_width;   // [dimensionless]
+    double F1 = exp(-pow(fiberExp, 2));        // Gaussian force-length curve
+
+    double dF1_dfiberLengthNorm = SimTK::NaN;
+
+    if (returnJacobians) dF1_dfiberLengthNorm = -2.0 * fiberExp * F1 / fl_width;
+
+    SimTK::Vec2 fiberActiveForceLengthMultiplierAndDeriv;
+    fiberActiveForceLengthMultiplierAndDeriv[0] = F1;
+    fiberActiveForceLengthMultiplierAndDeriv[1] = dF1_dfiberLengthNorm;
+
+    return fiberActiveForceLengthMultiplierAndDeriv;
+}
+
+
+SimTK::Vec2 VandenBogert2011Muscle::calcFiberPassiveForceLengthMultiplier(double fiberLengthNorm, bool returnJacobians) const {
+
+    //------F3 is the dimensionless fiber (PEE) force (in units of Fmax)------//
+    double dF3_dfiberLengthNorm = SimTK::NaN;
+
+    // stiffness of the linear term is 1 N/m, convert to Fmax/Lceopt units
+    double kPEENorm = 1.0 / getMaxIsometricForce() * getOptimalFiberLength();;
+    // elongation of fiber (PEE), relative to Lceopt
+    double elongationFiberNorm = (fiberLengthNorm - getNormFiberSlackLength());
+    double F3 = kPEENorm * elongationFiberNorm;
+    // low stiffness linear term
+
+    if (returnJacobians) dF3_dfiberLengthNorm = kPEENorm;
+
+    double kPEE2Norm = 0;
+    if (elongationFiberNorm > 0) {
+        kPEE2Norm = 1 / pow(getFlWidth(), 2);  //Fiber (PEE) quadratic stiffness,
+        //          so Fpee = Fmax when Lce = Lce*(1+W)
+        //add quadratic term for positive elongation
+        F3 = F3 + kPEE2Norm * pow(elongationFiberNorm, 2);
+        if (returnJacobians) {
+            dF3_dfiberLengthNorm =
+                    dF3_dfiberLengthNorm + 2 * kPEE2Norm * elongationFiberNorm;
+
+        }
+    }
+
+    SimTK::Vec2 fiberPassiveForceLengthMultiplierAndDeriv;
+    fiberPassiveForceLengthMultiplierAndDeriv[0]=F3;
+    fiberPassiveForceLengthMultiplierAndDeriv[1]=dF3_dfiberLengthNorm;
+
+    return fiberPassiveForceLengthMultiplierAndDeriv;
+}
+
+
+SimTK::Vec4 VandenBogert2011Muscle::calcTendonForceMultiplier(double muscleLength, double projFibLenNorm, bool returnJacobians) const {
+
+// elongationTendon in [m]
+//--------F4 is the dimensionless SEE force (in units of Fmax)----------//
+
+//TODO: kSEE and kSEE2 could probably become derived parameters
+
+// stiffness of the linear term is 1 N/m, convert to Fmax/m (so normalized
+// by Fmax)
+    double kSEE = 1.0 / getMaxIsometricForce();
+    double optFiberLength = getOptimalFiberLength();
+    double elongationTendon = muscleLength - projFibLenNorm * optFiberLength; //m
+
+//  low stiffness linear term
+    double F4 = kSEE * elongationTendon;
+    double dF4_dmuscleLength = SimTK::NaN;
+    double dF4_dprojFibLenNorm = SimTK::NaN;
+    double dF4_dtendonLength = SimTK::NaN;
+    if (returnJacobians) {
+        dF4_dprojFibLenNorm = -kSEE * optFiberLength;
+        dF4_dmuscleLength = kSEE;
+        dF4_dtendonLength = kSEE;  //In N/m units
+    }
+
+    double kSEE2 = SimTK::NaN;
+    if (elongationTendon > 0) {
+// Tendon (SEE) quadratic stiffness, so Fsee = Fmax at strain of umax
+// This is normalized by Fmax
+        kSEE2 = 1 / pow(getTendonSlackLength() * getFMaxTendonStrain(), 2);
+
+
+// add quadratic term for positive deformation
+        F4 = F4 + (kSEE2 * pow(elongationTendon, 2));
+        if (returnJacobians) {
+            dF4_dprojFibLenNorm = dF4_dprojFibLenNorm - 2 * kSEE2 *
+                                                        optFiberLength *
+                                                        elongationTendon;
+            dF4_dmuscleLength = dF4_dmuscleLength + 2 * kSEE2 *
+                                                    elongationTendon;
+            dF4_dtendonLength = dF4_dtendonLength  + 2*kSEE2*elongationTendon;
+        }
+    }
+
+
+    SimTK::Vec4 tendonForceMultiplierAndDeriv;
+    tendonForceMultiplierAndDeriv[0]=F4;
+    tendonForceMultiplierAndDeriv[1]=dF4_dprojFibLenNorm;
+    tendonForceMultiplierAndDeriv[2]=dF4_dmuscleLength;
+    tendonForceMultiplierAndDeriv[3]=dF4_dtendonLength;
+
+    return tendonForceMultiplierAndDeriv;
+}
+
+
+SimTK::Vec2 VandenBogert2011Muscle::calcFiberDampingMultiplier(double projFibVelNorm, bool returnJacobians) const {
+
+    double dampingCoeff = getDampingCoefficient();
+    double F5 = dampingCoeff * projFibVelNorm ;
+    double dF5_dprojFibVelNorm  = dampingCoeff;
+
+
+    SimTK::Vec2 fiberDampingMultiplierAndDeriv;
+    fiberDampingMultiplierAndDeriv[0] = F5;
+    fiberDampingMultiplierAndDeriv[1] = dF5_dprojFibVelNorm;
+
+    return fiberDampingMultiplierAndDeriv;
 }
